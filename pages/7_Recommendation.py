@@ -9,6 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from dotenv import load_dotenv
+
 load_dotenv()
 
 import pandas as pd
@@ -147,6 +148,7 @@ tech_label = "Bullish" if tech_score >= 2 else ("Neutral" if tech_score >= 0 els
 
 # ── 4. RAG catalysts & risks ───────────────────────────────────────────────
 from pathlib import Path as _P
+
 index_exists = (_P(__file__).parent.parent / "data" / "index" / "embeddings.npz").exists()
 
 rag_catalysts = []

@@ -9,6 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from dotenv import load_dotenv
+
 load_dotenv()
 
 import streamlit as st
@@ -35,6 +36,7 @@ def fetch_news(sym: str) -> list[dict]:
 def _rss_fallback(sym: str) -> list[dict]:
     """Fetch news via Google Finance RSS as fallback."""
     import xml.etree.ElementTree as ET
+
     import requests
 
     url = f"https://feeds.finance.yahoo.com/rss/2.0/headline?s={sym}&region=US&lang=en-US"
