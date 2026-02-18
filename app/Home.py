@@ -318,11 +318,7 @@ Type above or click a quick question ↑
 # RIGHT — Analysis & Reports (70%)
 # ══════════════════════════════════════════════════════════════════════════════
 with analysis:
-    st.markdown(
-        "<p style='font-size:1.25rem;font-weight:700;margin:0 0 6px;white-space:normal;overflow:visible'>"
-        "🔍 CardLens — Mastercard (MA) · MGMT690 Project 2</p>",
-        unsafe_allow_html=True,
-    )
+    st.subheader("🔍 CardLens — Mastercard (MA) · MGMT690 Project 2")
 
     # ── Live metrics ──────────────────────────────────────────────────────────
     st.caption("📊 **Live Market Snapshot** · auto-refreshes every 5 min")
