@@ -12,12 +12,13 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from dotenv import load_dotenv
 
-load_dotenv()
+# Load .env from project root (works regardless of where streamlit is launched from)
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 import streamlit as st
 import yfinance as yf
 
-# ── Load API key (priority: session_state → st.secrets → .env) ────────────────
+# Load Streamlit Cloud secrets if available (overrides .env on cloud)
 try:
     for _k in ["OPENAI_API_KEY"]:
         if _k in st.secrets:
@@ -29,28 +30,16 @@ st.set_page_config(
     page_title="CardLens · Mastercard Research",
     page_icon="🔍",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
-# ── Custom CSS — live chat look ────────────────────────────────────────────────
+# ── Custom CSS ────────────────────────────────────────────────────────────────
 st.markdown(
     """
 <style>
-/* Chat message bubbles */
-[data-testid="stChatMessage"] {
-    border-radius: 12px;
-    padding: 6px 4px;
-    margin-bottom: 4px;
-}
-/* User bubble */
-[data-testid="stChatMessage"][data-testid*="user"] {
-    background: #1e3a5f;
-}
-/* Chip buttons */
 div[data-testid="column"] button {
     border-radius: 20px !important;
     font-size: 0.75rem !important;
-    padding: 4px 10px !important;
     border: 1px solid #444 !important;
     background: #1a1a2e !important;
     color: #ccc !important;
@@ -62,7 +51,6 @@ div[data-testid="column"] button:hover {
     border-color: #888 !important;
     color: #fff !important;
 }
-/* Metric labels */
 [data-testid="stMetric"] {
     background: #111827;
     border-radius: 8px;
@@ -73,47 +61,8 @@ div[data-testid="column"] button:hover {
     unsafe_allow_html=True,
 )
 
-# ── Sidebar — API key + nav ────────────────────────────────────────────────────
-with st.sidebar:
-    st.title("🔍 CardLens")
-    st.caption("MGMT690 · Project 2 · Mastercard (MA)")
-    st.divider()
 
-    st.markdown("**OpenAI API Key**")
-    entered_key = st.text_input(
-        "Paste your key here",
-        type="password",
-        value=st.session_state.get("_oai_key", ""),
-        placeholder="sk-proj-...",
-        label_visibility="collapsed",
-    )
-    if entered_key:
-        st.session_state["_oai_key"] = entered_key
-        os.environ["OPENAI_API_KEY"] = entered_key
-
-    # Resolve key
-    _api_key = st.session_state.get("_oai_key") or os.environ.get("OPENAI_API_KEY", "")
-
-    if _api_key and len(_api_key) > 10:
-        st.success("API key active ✅", icon="🔑")
-    else:
-        st.warning("Paste your OpenAI API key above to enable AI chat.", icon="⚠️")
-
-    st.divider()
-    st.markdown("**Analysis Pages**")
-    st.markdown(
-        "- 📄 Case Overview\n"
-        "- 📊 Fundamentals\n"
-        "- 📈 Technicals\n"
-        "- 💰 Valuation\n"
-        "- 📰 News\n"
-        "- 💬 AI Chat (extended)\n"
-        "- ⭐ Decision"
-    )
-    st.caption("Use the page selector at the top of the sidebar ↑")
-
-
-# ── Live MA metrics bar ────────────────────────────────────────────────────────
+# ── Live MA metrics (cached 5 min) ────────────────────────────────────────────
 @st.cache_data(ttl=300)
 def _snap() -> dict:
     info = yf.Ticker("MA").info
@@ -135,10 +84,9 @@ def _snap() -> dict:
     }
 
 
+# ── Page header ───────────────────────────────────────────────────────────────
 st.title("🔍 CardLens — Mastercard Research Terminal")
-st.caption(
-    "MGMT690 Project 2 · Powered by GPT-4o-mini + live market data + case documents (Agent Suite · Cloudflare · 10-K)"
-)
+st.caption("MGMT690 Project 2 · GPT-4o-mini + live market data + case documents (Agent Suite · Cloudflare · 10-K)")
 
 try:
     snap = _snap()
@@ -150,27 +98,26 @@ try:
     m5.metric("ROE", f"{snap['roe']:.1f}%")
     m6.metric("FCF", f"${snap['fcf']:.1f}B")
 except Exception:
-    st.info("Live market data loading…")
+    st.info("Loading live market data…")
 
 st.divider()
 
-# ── Live Chat ─────────────────────────────────────────────────────────────────
+# ── Chat ──────────────────────────────────────────────────────────────────────
 st.subheader("💬 Live AI Research Chat")
 st.caption(
-    "Ask anything about Mastercard — financials, strategy, valuation, Agent Suite, Cloudflare, risks. "
-    "Responses stream live."
+    "Ask anything about Mastercard — financials, valuation, Agent Suite, "
+    "Cloudflare partnership, risks, trade decision. Responses stream live."
 )
 
-# Quick question chips
 CHIPS = [
     "What is Mastercard Agent Suite?",
     "Explain the Cloudflare partnership",
     "Is Mastercard fairly valued?",
     "What are the main investment risks?",
-    "Give me a Buy / Hold / Avoid call",
-    "How does Agent Suite generate revenue?",
-    "MA vs Visa — which is better?",
-    "What does the 10-K say about growth?",
+    "Give me a Buy / Hold / Avoid recommendation",
+    "How does Agent Suite generate new revenue?",
+    "MA vs Visa — which is the better investment?",
+    "What does the 10-K say about Mastercard's growth?",
 ]
 
 chip_cols = st.columns(4)
@@ -179,69 +126,51 @@ for i, q in enumerate(CHIPS):
         st.session_state["_pending"] = q
 
 
-# ── Streaming chat function ────────────────────────────────────────────────────
 def _build_system() -> str:
     try:
         s = _snap()
         fin = (
-            f"LIVE MA DATA: Price ${s['price']:.2f} | Mkt Cap ${s['mktcap']:.0f}B | "
-            f"P/E {s['pe']:.1f}x (fwd {s['fpe']:.1f}x) | Revenue ${s['revenue']:.1f}B | "
-            f"Net Margin {s['margin']:.1f}% | ROE {s['roe']:.1f}% | FCF ${s['fcf']:.1f}B | "
-            f"Beta {s['beta']:.2f} | 1Y return {s['ytd']:+.1f}%"
+            f"LIVE MA DATA — Price ${s['price']:.2f} | Mkt Cap ${s['mktcap']:.0f}B | "
+            f"P/E {s['pe']:.1f}x (fwd {s['fpe']:.1f}x) | Revenue ${s['revenue']:.1f}B TTM | "
+            f"Net Margin {s['margin']:.1f}% | ROE {s['roe']:.1f}% | "
+            f"FCF ${s['fcf']:.1f}B | Beta {s['beta']:.2f} | 1Y return {s['ytd']:+.1f}%"
         )
     except Exception:
         fin = "Live market data unavailable."
 
-    doc_hint = ""
-    try:
-        # We'll inject RAG per-question; just note docs exist
-        doc_hint = "You have access to: Mastercard Agent Suite PR (Jan 2026), Cloudflare partnership PRs (2025/2026), Mastercard 10-K (2024)."
-    except Exception:
-        pass
-
-    return f"""You are an expert financial analyst and live research assistant for Mastercard (NYSE: MA) for an MBA equity research course (MGMT690).
+    return f"""You are an expert financial analyst and live research assistant for Mastercard (NYSE: MA) for MBA course MGMT690.
 
 {fin}
 
-Case context: {doc_hint}
+You have access to case documents: Mastercard Agent Suite PR (Jan 2026), Cloudflare partnership PRs (2025/2026), Mastercard 10-K (2024).
 
-Your role:
-- Answer financial, strategic, and valuation questions about Mastercard with depth and precision.
-- Use the live financial data above in every relevant answer.
-- Cite case documents when relevant (Agent Suite PR, Cloudflare PR, 10-K).
-- Be analytical, direct, and insightful — like a top-tier equity research report.
-- For valuation questions: provide DCF logic, peer multiples context, and a clear view.
-- For strategy: tie Agent Suite and Cloudflare to revenue/moat implications.
-- Format responses with bullet points or short paragraphs for clarity.
+Instructions:
+- Answer analytically and directly. Use specific numbers from the live data above.
+- Cite case documents when drawing on them (e.g. "Per the Agent Suite PR...").
+- For valuation: give DCF logic, peer multiples context, and a clear view.
+- For strategy: tie Agent Suite and Cloudflare to revenue and moat implications.
+- Be concise but insightful — like a top-tier equity research report.
+- Format with bullet points or short paragraphs for clarity.
 """
 
 
 def _rag_context(question: str) -> str:
-    """Get relevant case document excerpts for the question."""
     try:
         from src.retrieval import retrieve
 
         chunks = retrieve(question, top_k=4)
         if not chunks:
             return ""
-        return "\n\nRelevant case document excerpts:\n" + "\n".join(
-            f"[{c['citation']}]: {c['text'][:400]}" for c in chunks
-        )
+        return "\n\nCase document excerpts:\n" + "\n".join(f"[{c['citation']}]: {c['text'][:400]}" for c in chunks)
     except Exception:
         return ""
 
 
-def _stream(api_key: str, chat_history: list[dict], question: str):
-    """Yield streaming tokens from OpenAI."""
+def _stream(api_key: str, history: list[dict], question: str):
     from openai import OpenAI
 
-    rag = _rag_context(question)
-    system = _build_system()
-    if rag:
-        system += rag
-
-    messages = [{"role": "system", "content": system}] + chat_history
-
+    system = _build_system() + _rag_context(question)
+    messages = [{"role": "system", "content": system}] + history
     client = OpenAI(api_key=api_key)
     with client.chat.completions.create(
         model="gpt-4o-mini",
@@ -256,7 +185,6 @@ def _stream(api_key: str, chat_history: list[dict], question: str):
                 yield delta
 
 
-# ── Chat history display ───────────────────────────────────────────────────────
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
@@ -264,32 +192,33 @@ for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-# ── Handle input ──────────────────────────────────────────────────────────────
 prompt = st.chat_input("Ask about Mastercard, Agent Suite, Cloudflare, valuation, risks…")
 if not prompt and "_pending" in st.session_state:
     prompt = st.session_state.pop("_pending")
 
 if prompt:
-    api_key = st.session_state.get("_oai_key") or os.environ.get("OPENAI_API_KEY", "")
+    _api_key = os.environ.get("OPENAI_API_KEY", "")
 
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        if not api_key or len(api_key) < 10:
-            answer = "⚠️ Please paste your OpenAI API key in the sidebar to enable the live chat."
-            st.markdown(answer)
+        if not _api_key:
+            answer = (
+                "⚠️ OpenAI API key not found. "
+                "The app admin needs to add it to Streamlit Cloud secrets or the `.env` file."
+            )
+            st.warning(answer)
         else:
             try:
-                answer = st.write_stream(_stream(api_key, st.session_state.messages[:-1], prompt))
+                answer = st.write_stream(_stream(_api_key, st.session_state.messages[:-1], prompt))
             except Exception as e:
-                answer = f"❌ Error: {e}"
+                answer = f"❌ {e}"
                 st.error(answer)
 
     st.session_state.messages.append({"role": "assistant", "content": answer})
 
-# ── Controls ──────────────────────────────────────────────────────────────────
 if st.session_state.messages:
     if st.button("🗑 Clear conversation"):
         st.session_state.messages = []
@@ -297,6 +226,6 @@ if st.session_state.messages:
 
 st.divider()
 st.caption(
-    "Live data from Yahoo Finance · Case docs: Agent Suite PR, Cloudflare PR, MA 10-K · "
+    "Live data: Yahoo Finance · Case docs: Agent Suite PR, Cloudflare PRs, MA 10-K · "
     "Educational only — not investment advice."
 )
