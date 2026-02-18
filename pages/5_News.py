@@ -1,5 +1,5 @@
 """
-News page — latest headlines for the ticker via yfinance + RSS fallback.
+News — Mastercard headlines from newsroom RSS + Google News RSS + pinned case PRs.
 """
 
 from __future__ import annotations
@@ -13,96 +13,85 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+from datetime import datetime, timezone
+
+import feedparser
 import streamlit as st
-import yfinance as yf
 
 st.set_page_config(page_title="News · CardLens", page_icon="📰", layout="wide")
 
 st.title("📰 Latest News")
+st.caption("Mastercard (MA) headlines — official newsroom RSS + Google News · cached 30 min")
 
-ticker_sym = st.session_state.get("ticker", "MA")
-st.caption(f"Ticker: **{ticker_sym}** · Top 10 headlines")
+NEWS_SOURCES = [
+    {"label": "Mastercard Newsroom", "url": "https://newsroom.mastercard.com/feed/"},
+    {
+        "label": "Google News — Mastercard",
+        "url": "https://news.google.com/rss/search?q=Mastercard+MA+stock&hl=en-US&gl=US&ceid=US:en",
+    },
+]
 
 
 @st.cache_data(ttl=1800)
-def fetch_news(sym: str) -> list[dict]:
-    t = yf.Ticker(sym)
+def fetch_feed(url: str) -> list[dict]:
     try:
-        news = t.news or []
-        return news[:10]
-    except Exception:
-        return []
+        feed = feedparser.parse(url)
+        items = []
+        for entry in feed.entries[:8]:
+            pub = entry.get("published", "") or entry.get("updated", "")
+            try:
+                ts = entry.get("published_parsed") or entry.get("updated_parsed")
+                if ts:
+                    pub = datetime(*ts[:6], tzinfo=timezone.utc).strftime("%Y-%m-%d")
+            except Exception:
+                pass
+            items.append(
+                {
+                    "title": entry.get("title", "No title"),
+                    "link": entry.get("link", "#"),
+                    "published": pub,
+                }
+            )
+        return items
+    except Exception as e:
+        return [{"title": f"Feed error: {e}", "link": "#", "published": ""}]
 
 
-def _rss_fallback(sym: str) -> list[dict]:
-    """Fetch news via Google Finance RSS as fallback."""
-    import xml.etree.ElementTree as ET
+# ── Pinned case press releases ────────────────────────────────────────────────
+st.subheader("📌 Case Press Releases (Pinned)")
+pinned = [
+    (
+        "Mastercard Launches Agent Suite — Ready Enterprises for a New Era (Jan 2026)",
+        "https://www.mastercard.com/us/en/news-and-trends/press/2026/january/mastercard-launches-agent-suite-to-ready-enterprises-for-a-new-e.html",
+        "Mastercard.com · January 2026",
+    ),
+    (
+        "Cloudflare × Mastercard — Comprehensive Cyber Defense Partnership (Feb 2026)",
+        "https://www.cloudflare.com/press/press-releases/2026/cloudflare-and-mastercard-partner-to-extend-comprehensive-cyber-defense/",
+        "Cloudflare · February 2026",
+    ),
+    (
+        "Cloudflare × Mastercard — Agentic Commerce Collaboration (2025)",
+        "https://www.cloudflare.com/press/press-releases/2025/cloudflare-collaborates-with-leading-payments-companies-to-secure-and-enable-agentic-commerce/",
+        "Cloudflare · 2025",
+    ),
+]
+for title, link, meta in pinned:
+    st.markdown(f"**[{title}]({link})**")
+    st.caption(meta)
+    st.divider()
 
-    import requests
-
-    url = f"https://feeds.finance.yahoo.com/rss/2.0/headline?s={sym}&region=US&lang=en-US"
-    try:
-        resp = requests.get(url, timeout=8)
-        root = ET.fromstring(resp.text)
-        items = root.findall(".//item")
-        results = []
-        for item in items[:10]:
-            title = item.findtext("title", "")
-            link = item.findtext("link", "")
-            pub_date = item.findtext("pubDate", "")
-            results.append({"title": title, "link": link, "pubDate": pub_date})
-        return results
-    except Exception:
-        return []
-
-
-with st.spinner("Fetching news…"):
-    articles = fetch_news(ticker_sym)
-
-if not articles:
-    st.info("No news from yfinance — trying RSS fallback…")
-    rss_items = _rss_fallback(ticker_sym)
-    if rss_items:
-        for item in rss_items:
-            st.markdown(f"**[{item['title']}]({item['link']})**")
-            if item.get("pubDate"):
-                st.caption(item["pubDate"])
-            st.divider()
+# ── Live feeds ────────────────────────────────────────────────────────────────
+for src in NEWS_SOURCES:
+    st.subheader(f"🔗 {src['label']}")
+    articles = fetch_feed(src["url"])
+    if not articles or (len(articles) == 1 and "error" in articles[0]["title"].lower()):
+        st.info(f"No articles from {src['label']} right now — feed may be temporarily unavailable.")
     else:
-        st.warning("No news articles found for this ticker. Check ticker symbol or try again later.")
-else:
-    for article in articles:
-        # yfinance news item structure
-        title = article.get("title", "No title")
-        link = article.get("link") or article.get("url", "#")
-        publisher = article.get("publisher", "")
-        pub_time = article.get("providerPublishTime")
-        thumbnail = None
-        if isinstance(article.get("thumbnail"), dict):
-            resolutions = article["thumbnail"].get("resolutions", [])
-            if resolutions:
-                thumbnail = resolutions[0].get("url")
+        for art in articles:
+            st.markdown(f"**[{art['title']}]({art['link']})**")
+            if art["published"]:
+                st.caption(art["published"])
+            st.divider()
 
-        col1, col2 = st.columns([5, 1])
-        with col1:
-            st.markdown(f"#### [{title}]({link})")
-            meta = []
-            if publisher:
-                meta.append(publisher)
-            if pub_time:
-                from datetime import datetime, timezone
-
-                try:
-                    dt = datetime.fromtimestamp(pub_time, tz=timezone.utc)
-                    meta.append(dt.strftime("%Y-%m-%d %H:%M UTC"))
-                except Exception:
-                    pass
-            if meta:
-                st.caption(" · ".join(meta))
-        with col2:
-            if thumbnail:
-                st.image(thumbnail, width=100)
-
-        st.divider()
-
-st.caption("News sourced from yfinance (Yahoo Finance). Links open external sites.")
+st.caption("Feeds cached 30 min · Links open external sites · Not financial advice.")

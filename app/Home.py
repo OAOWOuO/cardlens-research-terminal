@@ -38,47 +38,58 @@ with st.sidebar:
     st.caption("MGMT690 · Project 2 · Mastercard Case")
     st.divider()
 
-    ticker = st.text_input("Ticker", value=os.environ.get("DEFAULT_TICKER", "MA"), max_chars=10)
-    st.session_state["ticker"] = ticker.upper().strip()
+    st.markdown("**🌐 Fetch & Index Documents**")
+    st.caption("Downloads case press releases + 10-K, then builds the AI search index.")
 
-    horizon = st.selectbox("Horizon", ["1W", "1M", "3M", "6M"], index=2)
+    if st.button("🌐 Fetch & Index Documents", use_container_width=True):
+        with st.spinner("Fetching case documents from the web…"):
+            try:
+                from src.fetch_docs import fetch_all
+
+                results = fetch_all()
+                ok = [r for r in results if r["status"] == "ok"]
+                fail = [r for r in results if r["status"] != "ok"]
+                if ok:
+                    st.success(f"Fetched {len(ok)} document(s).")
+                if fail:
+                    for r in fail:
+                        st.warning(f"⚠ {r['filename']}: {r.get('error', 'failed')}")
+            except Exception as e:
+                st.error(f"Fetch error: {e}")
+
+        with st.spinner("Ingesting & chunking documents…"):
+            try:
+                from src.ingest import ingest_all
+
+                n_chunks = ingest_all()
+            except Exception as e:
+                st.error(f"Ingest error: {e}")
+                n_chunks = 0
+
+        with st.spinner("Building embeddings index…"):
+            try:
+                from src.embeddings import build_index
+
+                n_emb = build_index()
+            except Exception as e:
+                st.error(f"Embeddings error: {e}")
+                n_emb = 0
+
+        if n_emb == 0 and n_chunks == 0:
+            st.warning("No documents indexed. Check fetch errors above.")
+        else:
+            st.success(f"✅ Indexed {n_chunks} chunks · {n_emb} embeddings built. AI Chat is ready!")
+
+    st.divider()
+
+    st.markdown("**📊 Settings**")
+    horizon = st.selectbox("Analysis Horizon", ["1W", "1M", "3M", "6M"], index=2)
     st.session_state["horizon"] = horizon
 
-    risk_profile = st.selectbox(
-        "Risk Profile",
-        ["Conservative", "Balanced", "Aggressive"],
-        index=1,
-    )
-    st.session_state["risk_profile"] = risk_profile
-
     st.divider()
-
-    if st.button("🔄 Rebuild Document Index", use_container_width=True):
-        with st.spinner("Ingesting documents…"):
-            from src.ingest import ingest_all
-
-            n_chunks = ingest_all()
-        with st.spinner("Building embeddings…"):
-            from src.embeddings import build_index
-
-            n_emb = build_index()
-        if n_emb == 0 and n_chunks == 0:
-            st.warning("No documents found in data/raw/. Add PDF/TXT/MD files and try again.")
-        else:
-            st.success(f"Indexed {n_chunks} chunks, built {n_emb} embeddings.")
-
-    if st.button("📊 Run Full Report", use_container_width=True):
-        st.info("Navigate to each tab to view the full analysis.")
-
-    st.divider()
-    st.caption("**Risk Profile Guide**")
-    st.markdown(
-        """
-- **Conservative**: Higher margin-of-safety threshold (≥20%), smaller position sizing suggestion, emphasis on downside risks.
-- **Balanced**: Standard thresholds (≥10% margin of safety), moderate sizing.
-- **Aggressive**: Lower threshold (≥5%), larger sizing, emphasis on catalysts.
-        """,
-        unsafe_allow_html=False,
+    st.caption(
+        "**About**: CardLens is a case-grounded equity research terminal built for "
+        "MGMT690 Project 2. All analysis is educational — not investment advice."
     )
 
 # ── Main content ──────────────────────────────────────────────────────────────
@@ -87,36 +98,78 @@ st.subheader("MGMT690 Project 2 · Mastercard (MA) Equity Research")
 
 st.markdown(
     """
-Welcome to **CardLens Research Terminal** — a case-grounded intelligent equity research workbench.
+Welcome to **CardLens Research Terminal** — a case-grounded intelligent equity research workbench
+focused on **Mastercard (NYSE: MA)** and two landmark case events:
 
-Use the **sidebar** to configure your ticker, analysis horizon, and risk profile, then navigate the pages:
+> 🤖 **Agent Suite** (Jan 2026) — Mastercard's infrastructure for AI-native agentic commerce
+> 🔒 **Cloudflare Partnership** (Feb 2026) — Comprehensive cyber-defense for agentic payments
+"""
+)
 
-| Page | What it does |
-|------|-------------|
-| **Q&A Chat** | Ask questions answered from your case documents (RAG, cited) |
-| **Fundamentals** | Revenue, margins, quality checklist from market data |
-| **Valuation** | DCF-lite + multiples, margin of safety |
-| **Technicals** | Price chart, SMA 50/200, RSI, MACD, trend signal |
-| **News** | Latest headlines for the ticker |
-| **Sources** | Document library — view, reindex |
-| **Recommendation** | Final Buy/Hold/Avoid + horizon outlook |
+st.divider()
+
+# ── Getting started ────────────────────────────────────────────────────────────
+st.subheader("🚀 Getting Started")
+
+col_gs1, col_gs2 = st.columns([1, 2])
+with col_gs1:
+    st.markdown(
+        """
+**Two steps to unlock AI Chat:**
+
+1. Click **🌐 Fetch & Index Documents** in the sidebar
+2. Navigate to **💬 AI Research Chat** and ask anything
+
+That's it — no manual file uploads needed.
+        """
+    )
+with col_gs2:
+    st.info(
+        "The fetch step downloads four case documents directly from the web "
+        "(Mastercard newsroom, Cloudflare press releases, SEC EDGAR 10-K) "
+        "and builds a semantic search index. "
+        "Requires an **OpenAI API key** in your environment or Streamlit secrets.",
+        icon="💡",
+    )
+
+st.divider()
+
+# ── Page map ──────────────────────────────────────────────────────────────────
+st.subheader("📋 Research Pages")
+
+st.markdown(
     """
+| # | Page | What it covers |
+|---|------|----------------|
+| 1 | **📄 Case Overview** | Agent Suite + Cloudflare thesis, event timeline, key analytical questions |
+| 2 | **📊 Fundamentals** | Revenue, margins, ROE, FCF, quality checklist — cited to 10-K |
+| 3 | **📈 Technicals** | Candlestick chart, SMA 20/50/200, RSI, MACD, rolling volatility, max drawdown |
+| 4 | **💰 Valuation** | DCF-lite with sliders, WACC × terminal-growth sensitivity table, peer comps |
+| 5 | **📰 News** | Pinned case press releases + live Mastercard newsroom RSS + Google News |
+| 6 | **💬 AI Research Chat** | Ask anything — answers grounded in case documents with citations |
+| 7 | **⭐ Decision** | Buy / Hold / Avoid signal, data-derived horizon return ranges |
+"""
 )
 
-st.info(
-    "**Getting started**: Drop your Mastercard case materials (PDF, TXT, or MD) into `data/raw/`, "
-    "then click **Rebuild Document Index** in the sidebar before using Q&A Chat.",
-    icon="💡",
-)
+st.divider()
 
-# Show index status
-from pathlib import Path as _P
+# ── Index status dashboard ─────────────────────────────────────────────────────
+st.subheader("📦 Document Index Status")
 
-index_file = _P(__file__).parent.parent / "data" / "index" / "embeddings.npz"
-raw_dir = _P(__file__).parent.parent / "data" / "raw"
+PROJECT_ROOT = Path(__file__).parent.parent
+index_file = PROJECT_ROOT / "data" / "index" / "embeddings.npz"
+raw_dir = PROJECT_ROOT / "data" / "raw"
 raw_files = [f for f in raw_dir.iterdir() if f.suffix.lower() in {".pdf", ".txt", ".md"}] if raw_dir.exists() else []
 
-col1, col2, col3 = st.columns(3)
-col1.metric("Documents in data/raw", len(raw_files))
-col2.metric("Index built", "Yes" if index_file.exists() else "No")
-col3.metric("Active ticker", st.session_state.get("ticker", "MA"))
+s1, s2, s3 = st.columns(3)
+s1.metric("Documents in data/raw", len(raw_files))
+s2.metric("Search Index", "✅ Ready" if index_file.exists() else "❌ Not built")
+s3.metric("Ticker", "MA · Mastercard")
+
+if raw_files:
+    with st.expander("View indexed documents"):
+        for f in sorted(raw_files):
+            size_kb = f.stat().st_size / 1024
+            st.markdown(f"- `{f.name}` — {size_kb:.1f} KB")
+else:
+    st.caption("No documents yet — click **🌐 Fetch & Index Documents** in the sidebar.")
