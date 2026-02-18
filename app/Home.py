@@ -16,6 +16,11 @@ load_dotenv()
 
 import streamlit as st
 
+# Load secrets from Streamlit Cloud secrets if available (overrides .env)
+for _key in ["OPENAI_API_KEY", "DEFAULT_TICKER"]:
+    if _key in st.secrets:
+        os.environ[_key] = st.secrets[_key]
+
 st.set_page_config(
     page_title="CardLens Research Terminal",
     page_icon="🔍",
