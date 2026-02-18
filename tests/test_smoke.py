@@ -80,18 +80,30 @@ def test_qa_no_index(tmp_path, monkeypatch):
     monkeypatch.setattr(embeddings, "META_FILE", tmp_path / "meta.json")
     from src import retrieval
 
-    # Patch retrieval to use tmp_path index
-    original_retrieve = retrieval.retrieve
+    # Patch retrieval to return empty (simulates missing index)
+    monkeypatch.setattr(retrieval, "retrieve", lambda query, top_k=5: [])
 
-    def mock_retrieve(query, top_k=5):
-        from src.embeddings import load_index as li
+    # Patch OpenAI so no real API call is made in CI
+    import types
 
-        arr, meta = li()
-        if arr is None:
-            return []
-        return original_retrieve(query, top_k)
+    fake_msg = types.SimpleNamespace(content="Mock answer for testing.")
+    fake_choice = types.SimpleNamespace(message=fake_msg)
+    fake_response = types.SimpleNamespace(choices=[fake_choice])
 
-    monkeypatch.setattr(retrieval, "retrieve", mock_retrieve)
+    class FakeCompletions:
+        def create(self, **kwargs):
+            return fake_response
+
+    class FakeChat:
+        completions = FakeCompletions()
+
+    class FakeClient:
+        chat = FakeChat()
+
+    import src.qa as qa_mod
+
+    monkeypatch.setattr(qa_mod, "OpenAI", lambda **kwargs: FakeClient())
+
     from src.qa import answer_question
 
     result = answer_question("What is Mastercard's moat?")
