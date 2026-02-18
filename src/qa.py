@@ -1,5 +1,6 @@
 """
-Case-grounded Q&A with citations. Answers ONLY from retrieved chunks.
+Case-grounded Q&A with citations.
+Answers use case document RAG + full model knowledge for financial analysis.
 """
 
 from __future__ import annotations
@@ -10,66 +11,74 @@ from openai import OpenAI
 
 from src.retrieval import retrieve
 
-SYSTEM_PROMPT = """You are a financial research assistant for the Mastercard case (MGMT690).
-Your role is to answer questions using ONLY the provided case document excerpts below.
+SYSTEM_PROMPT = """You are an expert financial analyst and AI research assistant for Mastercard (NYSE: MA).
+You are helping MBA students in MGMT690 analyze two landmark case events:
+• Mastercard Agent Suite (Jan 2026) — AI-native agentic commerce infrastructure
+• Cloudflare × Mastercard partnership (Feb 2026) — Comprehensive cyber-defense for agentic payments
 
-Rules:
-1. Answer ONLY using information from the provided excerpts.
-2. If the excerpts do not contain enough information, say exactly: "Not found in provided case materials."
-3. Always cite the source(s) you used, using the citation tag provided per excerpt.
-4. Be concise and factual. Do not hallucinate or add external knowledge.
+You have access to case documents (excerpts provided below). You may also draw on your broad financial
+knowledge to give thorough, analytical answers. Always cite case documents when you use them.
+Be specific, data-driven, and insightful — this is for an MBA finance course.
 """
 
 
 def answer_question(question: str, top_k: int = 5, model: str = "gpt-4o-mini") -> dict:
     """
-    Answer a question using RAG.
+    Answer a question using RAG + full model knowledge.
 
     Returns:
         {
             "answer": str,
             "citations": list[str],
-            "excerpts": list[dict],   # chunk text + citation
-            "no_index": bool,         # True if index doesn't exist
+            "excerpts": list[dict],
+            "no_index": bool,
         }
     """
     chunks = retrieve(question, top_k=top_k)
-    if not chunks:
-        return {
-            "answer": "No document index found. Please rebuild the index from the Sources page.",
-            "citations": [],
-            "excerpts": [],
-            "no_index": True,
-        }
 
-    excerpts_text = ""
-    for i, c in enumerate(chunks, start=1):
-        excerpts_text += f"\n--- Excerpt {i} {c['citation']} ---\n{c['text']}\n"
+    if chunks:
+        excerpts_text = ""
+        for i, c in enumerate(chunks, start=1):
+            excerpts_text += f"\n--- Excerpt {i} [{c['citation']}] ---\n{c['text']}\n"
+        citations = list({c["citation"] for c in chunks})
+        no_index = False
+    else:
+        excerpts_text = "No case document excerpts available."
+        citations = []
+        no_index = True
 
     user_msg = f"""Question: {question}
 
-Provided excerpts:
+Case document excerpts:
 {excerpts_text}
 
-Answer (cite sources inline):"""
+Please provide a thorough answer. Cite case documents where relevant."""
 
-    client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        return {
+            "answer": "OpenAI API key not configured. Add OPENAI_API_KEY to your environment or Streamlit secrets.",
+            "citations": citations,
+            "excerpts": [{"citation": c["citation"], "text": c["text"], "score": c["score"]} for c in chunks],
+            "no_index": no_index,
+        }
+
+    client = OpenAI(api_key=api_key)
     response = client.chat.completions.create(
         model=model,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_msg},
         ],
-        temperature=0.1,
-        max_tokens=800,
+        temperature=0.2,
+        max_tokens=1000,
     )
 
     answer = response.choices[0].message.content.strip()
-    citations = [c["citation"] for c in chunks]
 
     return {
         "answer": answer,
         "citations": citations,
         "excerpts": [{"citation": c["citation"], "text": c["text"], "score": c["score"]} for c in chunks],
-        "no_index": False,
+        "no_index": no_index,
     }
