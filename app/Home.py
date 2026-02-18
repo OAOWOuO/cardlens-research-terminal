@@ -84,6 +84,15 @@ div[data-testid="stHorizontalBlock"] button[kind="secondary"]:hover {
     color: #e0e7ff !important;
     background: #1e1b4b !important;
 }
+/* Prevent headings from being clipped inside columns */
+[data-testid="stMarkdownContainer"] h1,
+[data-testid="stMarkdownContainer"] h2,
+[data-testid="stMarkdownContainer"] h3,
+[data-testid="stMarkdownContainer"] p {
+    white-space: normal !important;
+    overflow: visible !important;
+    word-wrap: break-word !important;
+}
 /* Tighter spacing overall */
 .block-container { padding-top: 1rem !important; padding-bottom: 1rem !important; }
 [data-testid="stVerticalBlock"] > div { gap: 0.4rem; }
@@ -309,7 +318,11 @@ Type above or click a quick question ↑
 # RIGHT — Analysis & Reports (70%)
 # ══════════════════════════════════════════════════════════════════════════════
 with analysis:
-    st.markdown("### 🔍 CardLens — Mastercard (MA) · MGMT690 Project 2")
+    st.markdown(
+        "<p style='font-size:1.25rem;font-weight:700;margin:0 0 6px;white-space:normal;overflow:visible'>"
+        "🔍 CardLens — Mastercard (MA) · MGMT690 Project 2</p>",
+        unsafe_allow_html=True,
+    )
 
     # ── Live metrics ──────────────────────────────────────────────────────────
     st.caption("📊 **Live Market Snapshot** · auto-refreshes every 5 min")
