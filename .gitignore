@@ -20,8 +20,6 @@ build/
 # macOS
 .DS_Store
 
-# Data outputs / indexes (fetched at runtime, not committed)
-data/raw/
+# Data outputs
 data/processed/
-data/index/
 product/runs/

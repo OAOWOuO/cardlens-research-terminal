@@ -295,7 +295,7 @@ if index_file.exists():
         except Exception as e:
             st.info(f"Could not load case context: {e}")
 else:
-    st.info("Build document index (Home → Fetch & Index) to show case-grounded catalysts and risks.", icon="📚")
+    st.info("Case document index not found — ensure data/index/embeddings.npz is present.", icon="📚")
 
 st.divider()
 st.caption(

@@ -24,19 +24,12 @@ st.caption(
     "Every answer cites its source."
 )
 
-# ── Index status indicator ────────────────────────────────────────────────────
 PROJECT_ROOT = Path(__file__).parent.parent
-index_file = PROJECT_ROOT / "data" / "index" / "embeddings.npz"
-raw_dir = PROJECT_ROOT / "data" / "raw"
-n_docs = len([f for f in raw_dir.iterdir() if f.suffix in {".txt", ".pdf", ".md"}]) if raw_dir.exists() else 0
 
-if index_file.exists():
-    st.success(f"Document index ready — {n_docs} documents indexed. Ask anything below.", icon="✅")
-else:
-    st.warning(
-        "No document index found. Go to **Home** → click **Fetch & Index Documents** first.",
-        icon="⚠️",
-    )
+st.success(
+    "Ask anything about the Mastercard case — Agent Suite, Cloudflare partnership, 10-K financials, risks.",
+    icon="✅",
+)
 
 st.divider()
 
@@ -121,7 +114,7 @@ if prompt:
                     st.divider()
 
         if result.get("no_index"):
-            st.error("No document index. Go to **Home** → **Fetch & Index Documents**.")
+            st.error("Could not load document index. Please contact the app admin.")
 
     st.session_state.chat_history.append(
         {
