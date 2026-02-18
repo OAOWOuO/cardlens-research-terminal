@@ -24,6 +24,7 @@ dependencies = [
 ]
 
 
+[tool.poetry]
 package-mode = false
 
 [build-system]
