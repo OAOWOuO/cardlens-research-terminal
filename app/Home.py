@@ -176,7 +176,9 @@ def _system() -> str:
         f"Beta {beta:.2f} | 1Y {ytd:+.1f}% | DCF IV ${iv:.0f} | MoS {mos:+.1f}%\n"
         "Case: Agent Suite (Jan 2026) — AI-native payments. Cloudflare (Feb 2026) — agentic cyber-defense.\n"
         "Docs: Agent Suite PR, Cloudflare PRs, 10-K 2024.\n"
-        "Be direct, analytical, use numbers, cite docs, bullet points."
+        "Answer the question asked — directly and only that. "
+        "Keep answers under 120 words. No preamble, no 'Great question', no repetition of the question. "
+        "Use bullet points for lists. Lead with the key fact or number."
     )
 
 
@@ -198,7 +200,7 @@ def _stream(api_key: str, history: list[dict], question: str):
     msgs = [{"role": "system", "content": _system() + _rag(question)}] + history
     client = OpenAI(api_key=api_key)
     with client.chat.completions.create(
-        model="gpt-4o-mini", messages=msgs, stream=True, temperature=0.3, max_tokens=1200
+        model="gpt-4o-mini", messages=msgs, stream=True, temperature=0.2, max_tokens=350
     ) as s:
         for chunk in s:
             d = chunk.choices[0].delta.content
@@ -307,8 +309,7 @@ Type above or click a quick question ↑
 # RIGHT — Analysis & Reports (70%)
 # ══════════════════════════════════════════════════════════════════════════════
 with analysis:
-    st.markdown("### 🔍 CardLens — Mastercard Research")
-    st.caption("NYSE: MA · MGMT690 Project 2")
+    st.markdown("### 🔍 CardLens — Mastercard (MA) · MGMT690 Project 2")
 
     # ── Live metrics ──────────────────────────────────────────────────────────
     st.caption("📊 **Live Market Snapshot** · auto-refreshes every 5 min")
