@@ -1,6 +1,7 @@
 """
 Fundamentals page — yfinance data + quality checklist.
 """
+
 from __future__ import annotations
 
 import sys
@@ -23,15 +24,18 @@ st.title("📋 Fundamentals")
 ticker_sym = st.session_state.get("ticker", "MA")
 st.caption(f"Ticker: **{ticker_sym}**")
 
+
 @st.cache_data(ttl=3600)
 def fetch_info(sym: str) -> dict:
     t = yf.Ticker(sym)
     return t.info or {}
 
+
 @st.cache_data(ttl=3600)
 def fetch_financials(sym: str):
     t = yf.Ticker(sym)
     return t.financials, t.balance_sheet, t.cashflow
+
 
 with st.spinner("Loading fundamentals…"):
     try:
@@ -93,7 +97,7 @@ if load_ok:
         available = [r for r in rows_to_show if r in financials.index]
         if available:
             df_fin = financials.loc[available].copy()
-            df_fin = df_fin.apply(lambda col: col.map(lambda v: f"${v/1e9:.2f}B" if pd.notna(v) else "N/A"))
+            df_fin = df_fin.apply(lambda col: col.map(lambda v: f"${v / 1e9:.2f}B" if pd.notna(v) else "N/A"))
             st.dataframe(df_fin, use_container_width=True)
 
     # ── Quality Checklist ──────────────────────────────────────────────────
@@ -114,26 +118,26 @@ if load_ok:
         check(
             op_margin > 0.20 if op_margin else None,
             "Pricing Power / Operating Margin",
-            f"Strong operating margin ({op_margin*100:.1f}%)" if op_margin else "",
-            f"Low operating margin ({op_margin*100:.1f}%)" if op_margin else "N/A",
+            f"Strong operating margin ({op_margin * 100:.1f}%)" if op_margin else "",
+            f"Low operating margin ({op_margin * 100:.1f}%)" if op_margin else "N/A",
         ),
         check(
             net_margin > 0.15 if net_margin else None,
             "Net Margin Quality",
-            f"Net margin {net_margin*100:.1f}% — above 15% threshold",
-            f"Net margin {net_margin*100:.1f}% — below 15% threshold",
+            f"Net margin {net_margin * 100:.1f}% — above 15% threshold",
+            f"Net margin {net_margin * 100:.1f}% — below 15% threshold",
         ),
         check(
             roe > 0.15 if roe else None,
             "Return on Equity (Moat Proxy)",
-            f"ROE {roe*100:.1f}% — indicates durable competitive advantage",
-            f"ROE {roe*100:.1f}% — below 15% moat proxy",
+            f"ROE {roe * 100:.1f}% — indicates durable competitive advantage",
+            f"ROE {roe * 100:.1f}% — below 15% moat proxy",
         ),
         check(
             fcf > 0 if fcf else None,
             "Free Cash Flow Generation",
-            f"Positive FCF (${fcf/1e9:.1f}B)" if fcf else "",
-            f"Negative or zero FCF (${fcf/1e9:.1f}B)" if fcf else "N/A",
+            f"Positive FCF (${fcf / 1e9:.1f}B)" if fcf else "",
+            f"Negative or zero FCF (${fcf / 1e9:.1f}B)" if fcf else "N/A",
         ),
         check(
             beta_val < 1.2 if beta_val else None,

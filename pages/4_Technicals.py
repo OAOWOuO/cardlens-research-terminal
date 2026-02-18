@@ -1,6 +1,7 @@
 """
 Technicals page — price chart + SMA/RSI/MACD with trend signal.
 """
+
 from __future__ import annotations
 
 import sys
@@ -27,9 +28,11 @@ period_map = {"3M": "3mo", "6M": "6mo", "1Y": "1y", "3Y": "3y", "5Y": "5y"}
 period_label = st.selectbox("Chart Period", list(period_map.keys()), index=2)
 period = period_map[period_label]
 
+
 @st.cache_data(ttl=900)
 def fetch_hist(sym: str, per: str) -> pd.DataFrame:
     return yf.Ticker(sym).history(period=per)
+
 
 with st.spinner("Loading price data…"):
     try:
@@ -67,7 +70,8 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 fig = make_subplots(
-    rows=3, cols=1,
+    rows=3,
+    cols=1,
     shared_xaxes=True,
     row_heights=[0.55, 0.22, 0.23],
     vertical_spacing=0.04,
@@ -75,15 +79,26 @@ fig = make_subplots(
 )
 
 # Candlestick
-fig.add_trace(go.Candlestick(
-    x=df.index, open=df["Open"], high=df["High"],
-    low=df["Low"], close=df["Close"],
-    name="Price", increasing_line_color="#26a69a", decreasing_line_color="#ef5350",
-    showlegend=True,
-), row=1, col=1)
+fig.add_trace(
+    go.Candlestick(
+        x=df.index,
+        open=df["Open"],
+        high=df["High"],
+        low=df["Low"],
+        close=df["Close"],
+        name="Price",
+        increasing_line_color="#26a69a",
+        decreasing_line_color="#ef5350",
+        showlegend=True,
+    ),
+    row=1,
+    col=1,
+)
 
 fig.add_trace(go.Scatter(x=df.index, y=df["SMA50"], name="SMA 50", line=dict(color="#fb8c00", width=1.5)), row=1, col=1)
-fig.add_trace(go.Scatter(x=df.index, y=df["SMA200"], name="SMA 200", line=dict(color="#ab47bc", width=1.5)), row=1, col=1)
+fig.add_trace(
+    go.Scatter(x=df.index, y=df["SMA200"], name="SMA 200", line=dict(color="#ab47bc", width=1.5)), row=1, col=1
+)
 
 # RSI
 fig.add_trace(go.Scatter(x=df.index, y=df["RSI"], name="RSI", line=dict(color="#42a5f5")), row=2, col=1)
@@ -144,13 +159,29 @@ else:
 st.markdown(f"### Trend: :{color}[{trend}]")
 
 col1, col2, col3, col4 = st.columns(4)
-col1.metric("Price vs SMA50", f"{'Above' if close > sma50 else 'Below'}" if not pd.isna(sma50) else "N/A",
-            delta=f"{(close/sma50-1)*100:+.1f}%" if not pd.isna(sma50) else None)
-col2.metric("Price vs SMA200", f"{'Above' if close > sma200 else 'Below'}" if not pd.isna(sma200) else "N/A",
-            delta=f"{(close/sma200-1)*100:+.1f}%" if not pd.isna(sma200) else None)
-col3.metric("RSI (14)", f"{rsi_val:.1f}" if not pd.isna(rsi_val) else "N/A",
-            delta="Overbought" if rsi_val >= 70 else ("Oversold" if rsi_val <= 30 else "Neutral") if not pd.isna(rsi_val) else None,
-            delta_color="inverse" if not pd.isna(rsi_val) and rsi_val >= 70 else "normal")
-col4.metric("MACD vs Signal", f"{'Bullish' if macd_val > sig_val else 'Bearish'}" if not (pd.isna(macd_val) or pd.isna(sig_val)) else "N/A")
+col1.metric(
+    "Price vs SMA50",
+    f"{'Above' if close > sma50 else 'Below'}" if not pd.isna(sma50) else "N/A",
+    delta=f"{(close / sma50 - 1) * 100:+.1f}%" if not pd.isna(sma50) else None,
+)
+col2.metric(
+    "Price vs SMA200",
+    f"{'Above' if close > sma200 else 'Below'}" if not pd.isna(sma200) else "N/A",
+    delta=f"{(close / sma200 - 1) * 100:+.1f}%" if not pd.isna(sma200) else None,
+)
+col3.metric(
+    "RSI (14)",
+    f"{rsi_val:.1f}" if not pd.isna(rsi_val) else "N/A",
+    delta="Overbought"
+    if rsi_val >= 70
+    else ("Oversold" if rsi_val <= 30 else "Neutral")
+    if not pd.isna(rsi_val)
+    else None,
+    delta_color="inverse" if not pd.isna(rsi_val) and rsi_val >= 70 else "normal",
+)
+col4.metric(
+    "MACD vs Signal",
+    f"{'Bullish' if macd_val > sig_val else 'Bearish'}" if not (pd.isna(macd_val) or pd.isna(sig_val)) else "N/A",
+)
 
 st.caption("Trend signal is a simple heuristic combining 4 indicators. Not financial advice.")

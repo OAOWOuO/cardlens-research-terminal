@@ -1,6 +1,7 @@
 """
 Ingest PDF/TXT/MD files from data/raw into chunked JSONL for RAG.
 """
+
 from __future__ import annotations
 
 import json

@@ -1,6 +1,7 @@
 """
 News page — latest headlines for the ticker via yfinance + RSS fallback.
 """
+
 from __future__ import annotations
 
 import sys
@@ -90,6 +91,7 @@ else:
                 meta.append(publisher)
             if pub_time:
                 from datetime import datetime, timezone
+
                 try:
                     dt = datetime.fromtimestamp(pub_time, tz=timezone.utc)
                     meta.append(dt.strftime("%Y-%m-%d %H:%M UTC"))

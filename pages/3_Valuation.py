@@ -1,6 +1,7 @@
 """
 Valuation page — DCF-lite + multiples with editable assumptions.
 """
+
 from __future__ import annotations
 
 import sys
@@ -23,9 +24,11 @@ st.title("💰 Valuation")
 ticker_sym = st.session_state.get("ticker", "MA")
 st.caption(f"Ticker: **{ticker_sym}** · Scenarios are illustrative, not investment advice.")
 
+
 @st.cache_data(ttl=3600)
 def fetch_info(sym: str) -> dict:
     return yf.Ticker(sym).info or {}
+
 
 with st.spinner("Loading market data…"):
     try:
@@ -56,25 +59,25 @@ if trailing_eps and trailing_eps > 0:
     bear_val = trailing_eps * bear_pe
     base_val = trailing_eps * base_pe
     bull_val = trailing_eps * bull_pe
-    df_pe = pd.DataFrame({
-        "Scenario": ["Bear", "Base", "Bull"],
-        "Applied P/E": [f"{bear_pe}x", f"{base_pe}x", f"{bull_pe}x"],
-        "Implied Price": [f"${bear_val:.0f}", f"${base_val:.0f}", f"${bull_val:.0f}"],
-        "vs Current": [
-            f"{(bear_val/current_price-1)*100:+.1f}%" if current_price else "N/A",
-            f"{(base_val/current_price-1)*100:+.1f}%" if current_price else "N/A",
-            f"{(bull_val/current_price-1)*100:+.1f}%" if current_price else "N/A",
-        ],
-    })
+    df_pe = pd.DataFrame(
+        {
+            "Scenario": ["Bear", "Base", "Bull"],
+            "Applied P/E": [f"{bear_pe}x", f"{base_pe}x", f"{bull_pe}x"],
+            "Implied Price": [f"${bear_val:.0f}", f"${base_val:.0f}", f"${bull_val:.0f}"],
+            "vs Current": [
+                f"{(bear_val / current_price - 1) * 100:+.1f}%" if current_price else "N/A",
+                f"{(base_val / current_price - 1) * 100:+.1f}%" if current_price else "N/A",
+                f"{(bull_val / current_price - 1) * 100:+.1f}%" if current_price else "N/A",
+            ],
+        }
+    )
     st.dataframe(df_pe, use_container_width=True, hide_index=True)
 else:
     st.warning("EPS data unavailable from yfinance for this ticker.")
 
 # ── Section 2: DCF-lite ────────────────────────────────────────────────────
 st.subheader("DCF-Lite (Transparent Assumptions)")
-st.markdown(
-    "Adjust the assumptions below. This is a simplified two-stage DCF using Free Cash Flow as the base."
-)
+st.markdown("Adjust the assumptions below. This is a simplified two-stage DCF using Free Cash Flow as the base.")
 
 with st.form("dcf_form"):
     c1, c2, c3 = st.columns(3)
@@ -86,18 +89,27 @@ with st.form("dcf_form"):
     )
     growth_rate = c2.slider(
         "Growth Rate (Years 1–5)",
-        min_value=0.0, max_value=0.30, value=0.12, step=0.01,
+        min_value=0.0,
+        max_value=0.30,
+        value=0.12,
+        step=0.01,
         format="%.0f%%",
     )
     terminal_growth = c3.slider(
         "Terminal Growth Rate",
-        min_value=0.01, max_value=0.06, value=0.03, step=0.005,
+        min_value=0.01,
+        max_value=0.06,
+        value=0.03,
+        step=0.005,
         format="%.1f%%",
     )
     c4, c5 = st.columns(2)
     discount_rate = c4.slider(
         "Discount Rate (WACC)",
-        min_value=0.06, max_value=0.15, value=0.09, step=0.005,
+        min_value=0.06,
+        max_value=0.15,
+        value=0.09,
+        step=0.005,
         format="%.1f%%",
     )
     net_debt_B = c5.number_input(
@@ -122,7 +134,9 @@ if submitted or True:
     enterprise_val = pv_total + pv_tv
     equity_val = enterprise_val - net_debt_B * 1e9
     intrinsic_per_share = equity_val / shares if shares > 0 else 0
-    margin_of_safety = (intrinsic_per_share - current_price) / intrinsic_per_share * 100 if intrinsic_per_share > 0 else 0
+    margin_of_safety = (
+        (intrinsic_per_share - current_price) / intrinsic_per_share * 100 if intrinsic_per_share > 0 else 0
+    )
 
     st.divider()
     cols = st.columns(4)
@@ -134,7 +148,7 @@ if submitted or True:
         delta=f"{'Undervalued' if margin_of_safety > 0 else 'Overvalued'}",
         delta_color="normal" if margin_of_safety > 0 else "inverse",
     )
-    cols[3].metric("PV of Terminal Value", f"${pv_tv/1e9:.1f}B")
+    cols[3].metric("PV of Terminal Value", f"${pv_tv / 1e9:.1f}B")
 
     risk_profile = st.session_state.get("risk_profile", "Balanced")
     mos_thresholds = {"Conservative": 20, "Balanced": 10, "Aggressive": 5}

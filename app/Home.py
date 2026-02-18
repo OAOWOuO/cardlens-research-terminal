@@ -1,6 +1,7 @@
 """
 CardLens Research Terminal — Home / Control Panel
 """
+
 from __future__ import annotations
 
 import os
@@ -52,9 +53,11 @@ with st.sidebar:
     if st.button("🔄 Rebuild Document Index", use_container_width=True):
         with st.spinner("Ingesting documents…"):
             from src.ingest import ingest_all
+
             n_chunks = ingest_all()
         with st.spinner("Building embeddings…"):
             from src.embeddings import build_index
+
             n_emb = build_index()
         if n_emb == 0 and n_chunks == 0:
             st.warning("No documents found in data/raw/. Add PDF/TXT/MD files and try again.")

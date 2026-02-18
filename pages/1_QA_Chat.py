@@ -1,6 +1,7 @@
 """
 Case-grounded Q&A Chat with citations.
 """
+
 from __future__ import annotations
 
 import sys
@@ -47,6 +48,7 @@ if prompt := st.chat_input("Ask about the Mastercard case…"):
         with st.spinner("Searching documents…"):
             try:
                 from src.qa import answer_question
+
                 result = answer_question(prompt)
             except Exception as e:
                 result = {
@@ -72,12 +74,14 @@ if prompt := st.chat_input("Ask about the Mastercard case…"):
                 "No document index found. Go to **Home** and click **Rebuild Document Index** after placing files in `data/raw/`."
             )
 
-    st.session_state.chat_history.append({
-        "role": "assistant",
-        "content": result["answer"],
-        "citations": result.get("citations", []),
-        "excerpts": result.get("excerpts", []),
-    })
+    st.session_state.chat_history.append(
+        {
+            "role": "assistant",
+            "content": result["answer"],
+            "citations": result.get("citations", []),
+            "excerpts": result.get("excerpts", []),
+        }
+    )
 
 if st.session_state.chat_history:
     if st.button("Clear chat history"):

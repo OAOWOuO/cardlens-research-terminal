@@ -1,6 +1,7 @@
 """
 Cosine-similarity retrieval over the document index.
 """
+
 from __future__ import annotations
 
 import os
@@ -38,12 +39,14 @@ def retrieve(query: str, top_k: int = DEFAULT_TOP_K) -> list[dict]:
         m = meta[idx]
         page_str = f" p.{m['page']}" if m["page"] is not None else ""
         citation = f"[Source: {m['filename']}{page_str}]"
-        results.append({
-            "chunk_id": m["chunk_id"],
-            "filename": m["filename"],
-            "page": m["page"],
-            "text": m["text"],
-            "score": float(scores[idx]),
-            "citation": citation,
-        })
+        results.append(
+            {
+                "chunk_id": m["chunk_id"],
+                "filename": m["filename"],
+                "page": m["page"],
+                "text": m["text"],
+                "score": float(scores[idx]),
+                "citation": citation,
+            }
+        )
     return results

@@ -1,6 +1,7 @@
 """
 Generate and persist embeddings for chunked documents.
 """
+
 from __future__ import annotations
 
 import json
@@ -46,12 +47,14 @@ def build_index(chunks_file: Path = CHUNKS_FILE) -> int:
         vectors = _embed_batch(texts, client)
         all_vectors.extend(vectors)
         for c in batch:
-            meta.append({
-                "chunk_id": c["chunk_id"],
-                "filename": c["filename"],
-                "page": c["page"],
-                "text": c["text"],
-            })
+            meta.append(
+                {
+                    "chunk_id": c["chunk_id"],
+                    "filename": c["filename"],
+                    "page": c["page"],
+                    "text": c["text"],
+                }
+            )
 
     arr = np.array(all_vectors, dtype=np.float32)
     np.savez_compressed(EMBEDDINGS_FILE, embeddings=arr)

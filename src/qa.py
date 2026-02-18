@@ -1,6 +1,7 @@
 """
 Case-grounded Q&A with citations. Answers ONLY from retrieved chunks.
 """
+
 from __future__ import annotations
 
 import os

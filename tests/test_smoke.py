@@ -2,6 +2,7 @@
 Smoke tests for CardLens Research Terminal.
 Tests that modules import and work gracefully when no data/index exists.
 """
+
 from __future__ import annotations
 
 import sys
@@ -12,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
 # ── Module import tests ────────────────────────────────────────────────────
+
 
 def test_import_ingest():
     import src.ingest  # noqa: F401
@@ -31,9 +33,11 @@ def test_import_qa():
 
 # ── Graceful empty-state tests ─────────────────────────────────────────────
 
+
 def test_load_chunks_empty(tmp_path):
     """load_chunks returns empty list when no chunks file exists."""
     from src.ingest import load_chunks
+
     result = load_chunks(tmp_path / "nonexistent.jsonl")
     assert result == []
 
@@ -41,6 +45,7 @@ def test_load_chunks_empty(tmp_path):
 def test_ingest_empty_dir(tmp_path):
     """ingest_all on empty directory creates 0 chunks, does not crash."""
     from src.ingest import ingest_all
+
     out = tmp_path / "chunks.jsonl"
     n = ingest_all(raw_dir=tmp_path, out_file=out)
     assert n == 0
@@ -49,6 +54,7 @@ def test_ingest_empty_dir(tmp_path):
 def test_load_index_empty(tmp_path, monkeypatch):
     """load_index returns (None, []) when no index files exist."""
     from src import embeddings
+
     monkeypatch.setattr(embeddings, "EMBEDDINGS_FILE", tmp_path / "embeddings.npz")
     monkeypatch.setattr(embeddings, "META_FILE", tmp_path / "meta.json")
     arr, meta = embeddings.load_index()
@@ -59,6 +65,7 @@ def test_load_index_empty(tmp_path, monkeypatch):
 def test_retrieve_no_index(tmp_path, monkeypatch):
     """retrieve returns empty list when no index is built."""
     from src import embeddings, retrieval
+
     monkeypatch.setattr(embeddings, "EMBEDDINGS_FILE", tmp_path / "embeddings.npz")
     monkeypatch.setattr(embeddings, "META_FILE", tmp_path / "meta.json")
     results = retrieval.retrieve("test query")
@@ -68,14 +75,17 @@ def test_retrieve_no_index(tmp_path, monkeypatch):
 def test_qa_no_index(tmp_path, monkeypatch):
     """answer_question returns graceful no_index response when no index exists."""
     from src import embeddings
+
     monkeypatch.setattr(embeddings, "EMBEDDINGS_FILE", tmp_path / "embeddings.npz")
     monkeypatch.setattr(embeddings, "META_FILE", tmp_path / "meta.json")
     from src import retrieval
+
     # Patch retrieval to use tmp_path index
     original_retrieve = retrieval.retrieve
 
     def mock_retrieve(query, top_k=5):
         from src.embeddings import load_index as li
+
         arr, meta = li()
         if arr is None:
             return []
@@ -83,6 +93,7 @@ def test_qa_no_index(tmp_path, monkeypatch):
 
     monkeypatch.setattr(retrieval, "retrieve", mock_retrieve)
     from src.qa import answer_question
+
     result = answer_question("What is Mastercard's moat?")
     assert "no_index" in result
     assert result["no_index"] is True
@@ -92,9 +103,11 @@ def test_qa_no_index(tmp_path, monkeypatch):
 
 # ── Chunking sanity test ───────────────────────────────────────────────────
 
+
 def test_chunk_text_basic():
     """Chunking produces correct structure."""
     from src.ingest import _chunk_text
+
     text = "Hello world. " * 200  # Short text
     chunks = list(_chunk_text(text, "test.txt", None))
     assert len(chunks) >= 1
@@ -109,6 +122,7 @@ def test_chunk_text_basic():
 def test_chunk_text_with_page():
     """Chunking with page number sets page in metadata."""
     from src.ingest import _chunk_text
+
     text = "Mastercard operates a global payment network. " * 50
     chunks = list(_chunk_text(text, "case.pdf", 3))
     assert all(c["page"] == 3 for c in chunks)
