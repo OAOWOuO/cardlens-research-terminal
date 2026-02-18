@@ -46,12 +46,8 @@ st.markdown(
 [data-testid="stMetricValue"] { font-size: 1.05rem !important; }
 [data-testid="stMetricDelta"] { font-size: 0.68rem !important; }
 
-/* Sticky LEFT chat panel (first column) */
+/* Left chat panel — simple border separator */
 div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(1) {
-    position: sticky;
-    top: 2.5rem;
-    height: calc(100vh - 3rem);
-    overflow-y: auto;
     border-right: 1px solid #1f2937;
     padding-right: 1rem !important;
 }
@@ -311,7 +307,8 @@ Type above or click a quick question ↑
 # RIGHT — Analysis & Reports (70%)
 # ══════════════════════════════════════════════════════════════════════════════
 with analysis:
-    st.markdown("### 🔍 CardLens — Mastercard (MA) · MGMT690 Project 2")
+    st.markdown("### 🔍 CardLens — Mastercard Research")
+    st.caption("NYSE: MA · MGMT690 Project 2")
 
     # ── Live metrics ──────────────────────────────────────────────────────────
     st.caption("📊 **Live Market Snapshot** · auto-refreshes every 5 min")
