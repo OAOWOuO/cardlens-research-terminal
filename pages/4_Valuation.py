@@ -1,9 +1,10 @@
 """
-Valuation — DCF with sensitivity table (WACC × terminal growth) + peer comps.
+Valuation — DCF with Bear/Base/Bull scenarios, sensitivity table, and peer comps with LLM interpretation.
 """
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -17,13 +18,22 @@ import pandas as pd
 import streamlit as st
 import yfinance as yf
 
+try:
+    for _k in ["OPENAI_API_KEY"]:
+        if _k in st.secrets:
+            os.environ[_k] = st.secrets[_k]
+except Exception:
+    pass
+
 st.set_page_config(page_title="Valuation · CardLens", page_icon="💰", layout="wide")
 
 st.title("💰 Valuation")
-st.caption("DCF · Sensitivity analysis · Peer comps · Educational only — not investment advice")
+st.caption(
+    "DCF · Bear/Base/Bull scenarios · Sensitivity analysis · Peer comps · Educational only — not investment advice"
+)
 
 TICKER = "MA"
-PEERS = {"MA": "Mastercard", "V": "Visa", "AXP": "American Express", "PYPL": "PayPal", "FIS": "Fiserv"}
+PEERS = {"MA": "Mastercard", "V": "Visa", "NET": "Cloudflare", "PYPL": "PayPal", "FIS": "Fiserv"}
 
 
 @st.cache_data(ttl=3600)
@@ -124,6 +134,47 @@ elif mos > 0:
 else:
     st.error(f"Stock appears overvalued by {-mos:.1f}% vs DCF. Adjust assumptions or see Bull case.")
 
+# ── Bear / Base / Bull scenarios ──────────────────────────────────────────────
+st.subheader("Bear / Base / Bull Scenarios")
+st.caption(
+    "Bear: growth −2pp, WACC +1pp, terminal growth −0.5pp · "
+    "Base: your inputs · "
+    "Bull: growth +2pp, WACC −1pp, terminal growth +0.5pp"
+)
+
+scenario_rows = []
+for scenario_name, g_adj, w_adj, tg_adj in [
+    ("🐻 Bear", -0.02, +0.01, -0.005),
+    ("⚖️ Base", 0.0, 0.0, 0.0),
+    ("🐂 Bull", +0.02, -0.01, +0.005),
+]:
+    s_g = growth_rate + g_adj
+    s_w = wacc + w_adj
+    s_tg = terminal_growth + tg_adj
+    s_iv = _dcf(base_fcf_B, s_g, s_w, s_tg, net_debt_input, shares)
+    s_vs = f"{(s_iv / current_price - 1) * 100:+.1f}%" if current_price else "N/A"
+    if s_iv > current_price * 1.15:
+        assessment = "✅ Materially Undervalued"
+    elif s_iv > current_price:
+        assessment = "🟡 Slight Upside"
+    elif s_iv > current_price * 0.85:
+        assessment = "🟠 Slight Downside"
+    else:
+        assessment = "🔴 Overvalued"
+    scenario_rows.append(
+        {
+            "Scenario": scenario_name,
+            "Growth": f"{s_g * 100:.0f}%",
+            "WACC": f"{s_w * 100:.1f}%",
+            "Term. Growth": f"{s_tg * 100:.1f}%",
+            "Intrinsic Value": f"${s_iv:.0f}",
+            "vs Current": s_vs,
+            "Assessment": assessment,
+        }
+    )
+
+st.dataframe(pd.DataFrame(scenario_rows), use_container_width=True, hide_index=True)
+
 st.divider()
 
 # ── Section 3: Sensitivity table ─────────────────────────────────────────────
@@ -166,7 +217,7 @@ st.divider()
 
 # ── Section 4: Peer comps ─────────────────────────────────────────────────────
 st.subheader("4 · Peer Comparables")
-st.caption("P/E · EV/EBITDA · P/S · Net Margin — fetched live via yfinance")
+st.caption("P/E · EV/EBITDA · P/FCF · Rev Growth · Net Margin — fetched live via yfinance")
 
 
 @st.cache_data(ttl=3600)
@@ -175,17 +226,24 @@ def get_peer_data() -> pd.DataFrame:
     for sym, name in PEERS.items():
         try:
             i = get_info(sym)
+            cp = i.get("currentPrice") or 0
+            fcf_val = i.get("freeCashflow")
+            sh_val = i.get("sharesOutstanding")
+            if fcf_val and sh_val and sh_val > 0 and cp > 0:
+                fcf_per_share = fcf_val / sh_val
+                pfcf_str = f"{cp / fcf_per_share:.1f}x" if fcf_per_share > 0 else "N/A"
+            else:
+                pfcf_str = "N/A"
             rows.append(
                 {
                     "Ticker": sym,
                     "Company": name,
-                    "Price": f"${i.get('currentPrice', 0):.2f}" if i.get("currentPrice") else "N/A",
+                    "Price": f"${cp:.2f}" if i.get("currentPrice") else "N/A",
                     "P/E (Trail.)": f"{i.get('trailingPE', 0):.1f}x" if i.get("trailingPE") else "N/A",
                     "P/E (Fwd)": f"{i.get('forwardPE', 0):.1f}x" if i.get("forwardPE") else "N/A",
                     "EV/EBITDA": f"{i.get('enterpriseToEbitda', 0):.1f}x" if i.get("enterpriseToEbitda") else "N/A",
-                    "P/S": f"{i.get('priceToSalesTrailing12Months', 0):.1f}x"
-                    if i.get("priceToSalesTrailing12Months")
-                    else "N/A",
+                    "P/FCF": pfcf_str,
+                    "Rev Growth": f"{i.get('revenueGrowth', 0) * 100:.1f}%" if i.get("revenueGrowth") else "N/A",
                     "Net Margin": f"{i.get('profitMargins', 0) * 100:.1f}%" if i.get("profitMargins") else "N/A",
                     "Op Margin": f"{i.get('operatingMargins', 0) * 100:.1f}%" if i.get("operatingMargins") else "N/A",
                 }
@@ -199,6 +257,36 @@ with st.spinner("Loading peer data…"):
     df_peers = get_peer_data()
 
 st.dataframe(df_peers, use_container_width=True, hide_index=True)
+
+# LLM one-sentence interpretation
+api_key = os.environ.get("OPENAI_API_KEY", "")
+if api_key:
+    try:
+        from openai import OpenAI
+
+        comps_text = df_peers.to_string(index=False)
+        client = OpenAI(api_key=api_key)
+        resp = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You are a financial analyst. One sentence only."},
+                {
+                    "role": "user",
+                    "content": (
+                        f"MA current price ${current_price:.2f}. Peer comps:\n{comps_text}\n\n"
+                        "In ONE sentence, does MA trade at a premium or discount vs peers, "
+                        "and is it justified by its margin profile?"
+                    ),
+                },
+            ],
+            temperature=0.2,
+            max_tokens=80,
+        )
+        st.info("🤖 " + resp.choices[0].message.content.strip())
+    except Exception:
+        pass
+
 st.caption(
-    "MA row is highlighted context; all peers fetched from Yahoo Finance. Multiples reflect market consensus, not CardLens estimates."
+    "Peers fetched from Yahoo Finance. NET (Cloudflare) included given the partnership angle. "
+    "Multiples reflect market consensus, not CardLens estimates."
 )

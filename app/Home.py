@@ -223,6 +223,22 @@ if "messages" not in st.session_state:
 if "input_key" not in st.session_state:
     st.session_state.input_key = 0
 
+# ── Sidebar: Re-index documents ────────────────────────────────────────────────
+with st.sidebar:
+    st.markdown("### ⚙️ Document Index")
+    st.caption("Index is pre-built and committed. Use this only if you add new documents.")
+    if st.button("🔄 Re-index Documents", use_container_width=True):
+        with st.spinner("Ingesting and embedding documents…"):
+            try:
+                from src.embeddings import build_index
+                from src.ingest import ingest_all
+
+                n_chunks = ingest_all()
+                n_emb = build_index()
+                st.sidebar.success(f"Done — {n_chunks} chunks · {n_emb} embeddings rebuilt.")
+            except Exception as _e:
+                st.sidebar.error(f"Re-index failed: {_e}")
+
 # ── LAYOUT: Chat (L 30%) | Analysis (R 70%) ───────────────────────────────────
 chat, analysis = st.columns([3, 7])
 

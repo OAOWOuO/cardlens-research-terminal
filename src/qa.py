@@ -1,6 +1,5 @@
 """
-Case-grounded Q&A with citations.
-Answers use case document RAG + full model knowledge for financial analysis.
+Case-grounded Q&A with strict RAG grounding, citations, and multi-turn memory.
 """
 
 from __future__ import annotations
@@ -11,26 +10,37 @@ from openai import OpenAI
 
 from src.retrieval import retrieve
 
-SYSTEM_PROMPT = """You are an expert financial analyst and AI research assistant for Mastercard (NYSE: MA).
-You are helping MBA students in MGMT690 analyze two landmark case events:
-• Mastercard Agent Suite (Jan 2026) — AI-native agentic commerce infrastructure
-• Cloudflare × Mastercard partnership (Feb 2026) — Comprehensive cyber-defense for agentic payments
+SYSTEM_PROMPT = """You are a financial analyst assistant for Mastercard (NYSE: MA) — MGMT690 MBA case study.
 
-You have access to case documents (excerpts provided below). You may also draw on your broad financial
-knowledge to give thorough, analytical answers. Always cite case documents when you use them.
-Be specific, data-driven, and insightful — this is for an MBA finance course.
+CRITICAL RULE: Answer ONLY using the case document excerpts provided in this message.
+If the answer is not found in the excerpts, say exactly: "This information is not in the case documents I have access to."
+Do not fabricate data, invent numbers, or draw on knowledge beyond the provided excerpts.
+
+When you use information from an excerpt, cite it explicitly (e.g., "Per the Agent Suite PR, ...").
+Be direct and concise — bullet points preferred. Maximum 150 words unless the question requires more detail.
 """
 
 
-def answer_question(question: str, top_k: int = 5, model: str = "gpt-4o-mini") -> dict:
+def answer_question(
+    question: str,
+    top_k: int = 5,
+    model: str = "gpt-4o-mini",
+    history: list[dict] | None = None,
+) -> dict:
     """
-    Answer a question using RAG + full model knowledge.
+    Answer a question using strict RAG grounding with optional multi-turn history.
+
+    Args:
+        question: The user's question.
+        top_k: Number of chunks to retrieve.
+        model: OpenAI model name.
+        history: Prior conversation turns as [{"role": "user"/"assistant", "content": str}, ...].
 
     Returns:
         {
             "answer": str,
             "citations": list[str],
-            "excerpts": list[dict],
+            "excerpts": list[dict],   # each has citation, source_title, source_url, text, score
             "no_index": bool,
         }
     """
@@ -39,39 +49,51 @@ def answer_question(question: str, top_k: int = 5, model: str = "gpt-4o-mini") -
     if chunks:
         excerpts_text = ""
         for i, c in enumerate(chunks, start=1):
-            excerpts_text += f"\n--- Excerpt {i} [{c['citation']}] ---\n{c['text']}\n"
+            excerpts_text += f"\n--- Excerpt {i} {c['citation']} ---\n{c['text']}\n"
         citations = list({c["citation"] for c in chunks})
         no_index = False
     else:
-        excerpts_text = "No case document excerpts available."
+        excerpts_text = "No case document excerpts are available."
         citations = []
         no_index = True
 
-    user_msg = f"""Question: {question}
-
-Case document excerpts:
-{excerpts_text}
-
-Please provide a thorough answer. Cite case documents where relevant."""
+    user_msg = (
+        f"Case document excerpts for context:\n{excerpts_text}\n\n"
+        f"Question: {question}\n\n"
+        "Answer strictly from the excerpts above. Cite sources explicitly."
+    )
 
     api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
         return {
-            "answer": "OpenAI API key not configured. Add OPENAI_API_KEY to your environment or Streamlit secrets.",
+            "answer": "⚠️ OpenAI API key not configured. Add OPENAI_API_KEY to Streamlit secrets or .env.",
             "citations": citations,
-            "excerpts": [{"citation": c["citation"], "text": c["text"], "score": c["score"]} for c in chunks],
+            "excerpts": [
+                {
+                    "citation": c["citation"],
+                    "source_title": c["source_title"],
+                    "source_url": c["source_url"],
+                    "text": c["text"],
+                    "score": c["score"],
+                }
+                for c in chunks
+            ],
             "no_index": no_index,
         }
+
+    # Build message list: system → prior history → current question+context
+    messages: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT}]
+    if history:
+        for msg in history:
+            messages.append({"role": msg["role"], "content": msg["content"]})
+    messages.append({"role": "user", "content": user_msg})
 
     client = OpenAI(api_key=api_key)
     response = client.chat.completions.create(
         model=model,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": user_msg},
-        ],
-        temperature=0.2,
-        max_tokens=1000,
+        messages=messages,
+        temperature=0.1,
+        max_tokens=500,
     )
 
     answer = response.choices[0].message.content.strip()
@@ -79,6 +101,15 @@ Please provide a thorough answer. Cite case documents where relevant."""
     return {
         "answer": answer,
         "citations": citations,
-        "excerpts": [{"citation": c["citation"], "text": c["text"], "score": c["score"]} for c in chunks],
+        "excerpts": [
+            {
+                "citation": c["citation"],
+                "source_title": c["source_title"],
+                "source_url": c["source_url"],
+                "text": c["text"],
+                "score": c["score"],
+            }
+            for c in chunks
+        ],
         "no_index": no_index,
     }
