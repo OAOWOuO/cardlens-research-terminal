@@ -1,5 +1,5 @@
 """
-CardLens Research Terminal — AI Research Chat + Live Dashboard
+CardLens Research Terminal — Live AI Research Chat
 """
 
 from __future__ import annotations
@@ -17,11 +17,11 @@ load_dotenv()
 import streamlit as st
 import yfinance as yf
 
-# Load Streamlit Cloud secrets
+# ── Load API key (priority: session_state → st.secrets → .env) ────────────────
 try:
-    for _key in ["OPENAI_API_KEY"]:
-        if _key in st.secrets:
-            os.environ[_key] = st.secrets[_key]
+    for _k in ["OPENAI_API_KEY"]:
+        if _k in st.secrets:
+            os.environ[_k] = st.secrets[_k]
 except Exception:
     pass
 
@@ -29,188 +29,274 @@ st.set_page_config(
     page_title="CardLens · Mastercard Research",
     page_icon="🔍",
     layout="wide",
-    initial_sidebar_state="collapsed",
+    initial_sidebar_state="expanded",
 )
 
+# ── Custom CSS — live chat look ────────────────────────────────────────────────
+st.markdown(
+    """
+<style>
+/* Chat message bubbles */
+[data-testid="stChatMessage"] {
+    border-radius: 12px;
+    padding: 6px 4px;
+    margin-bottom: 4px;
+}
+/* User bubble */
+[data-testid="stChatMessage"][data-testid*="user"] {
+    background: #1e3a5f;
+}
+/* Chip buttons */
+div[data-testid="column"] button {
+    border-radius: 20px !important;
+    font-size: 0.75rem !important;
+    padding: 4px 10px !important;
+    border: 1px solid #444 !important;
+    background: #1a1a2e !important;
+    color: #ccc !important;
+    white-space: normal !important;
+    text-align: left !important;
+}
+div[data-testid="column"] button:hover {
+    background: #16213e !important;
+    border-color: #888 !important;
+    color: #fff !important;
+}
+/* Metric labels */
+[data-testid="stMetric"] {
+    background: #111827;
+    border-radius: 8px;
+    padding: 8px 12px;
+}
+</style>
+""",
+    unsafe_allow_html=True,
+)
 
-# ── Live MA snapshot (cached 5 min) ───────────────────────────────────────────
+# ── Sidebar — API key + nav ────────────────────────────────────────────────────
+with st.sidebar:
+    st.title("🔍 CardLens")
+    st.caption("MGMT690 · Project 2 · Mastercard (MA)")
+    st.divider()
+
+    st.markdown("**OpenAI API Key**")
+    entered_key = st.text_input(
+        "Paste your key here",
+        type="password",
+        value=st.session_state.get("_oai_key", ""),
+        placeholder="sk-proj-...",
+        label_visibility="collapsed",
+    )
+    if entered_key:
+        st.session_state["_oai_key"] = entered_key
+        os.environ["OPENAI_API_KEY"] = entered_key
+
+    # Resolve key
+    _api_key = st.session_state.get("_oai_key") or os.environ.get("OPENAI_API_KEY", "")
+
+    if _api_key and len(_api_key) > 10:
+        st.success("API key active ✅", icon="🔑")
+    else:
+        st.warning("Paste your OpenAI API key above to enable AI chat.", icon="⚠️")
+
+    st.divider()
+    st.markdown("**Analysis Pages**")
+    st.markdown(
+        "- 📄 Case Overview\n"
+        "- 📊 Fundamentals\n"
+        "- 📈 Technicals\n"
+        "- 💰 Valuation\n"
+        "- 📰 News\n"
+        "- 💬 AI Chat (extended)\n"
+        "- ⭐ Decision"
+    )
+    st.caption("Use the page selector at the top of the sidebar ↑")
+
+
+# ── Live MA metrics bar ────────────────────────────────────────────────────────
 @st.cache_data(ttl=300)
-def _ma_snapshot() -> dict:
+def _snap() -> dict:
     info = yf.Ticker("MA").info
     hist = yf.Ticker("MA").history(period="1y")
-    ytd_ret = 0.0
+    ytd = 0.0
     if not hist.empty:
-        first = hist["Close"].iloc[0]
-        last = hist["Close"].iloc[-1]
-        ytd_ret = (last - first) / first * 100
+        ytd = (hist["Close"].iloc[-1] - hist["Close"].iloc[0]) / hist["Close"].iloc[0] * 100
     return {
-        "price": info.get("currentPrice") or info.get("regularMarketPrice") or 0,
+        "price": info.get("currentPrice") or 0,
         "pe": info.get("trailingPE") or 0,
+        "fpe": info.get("forwardPE") or 0,
         "mktcap": (info.get("marketCap") or 0) / 1e9,
         "margin": (info.get("profitMargins") or 0) * 100,
         "roe": (info.get("returnOnEquity") or 0) * 100,
         "fcf": (info.get("freeCashflow") or 0) / 1e9,
         "revenue": (info.get("totalRevenue") or 0) / 1e9,
-        "ytd": ytd_ret,
         "beta": info.get("beta") or 0,
-        "forward_pe": info.get("forwardPE") or 0,
+        "ytd": ytd,
     }
 
 
-# ── AI chat function (RAG + live financials + full model knowledge) ────────────
-def _chat(messages: list[dict]) -> str:
-    api_key = os.environ.get("OPENAI_API_KEY", "")
-    if not api_key:
-        return "⚠️ No OpenAI API key found. Add `OPENAI_API_KEY` to your Streamlit secrets or `.env` file."
-
-    from openai import OpenAI
-
-    client = OpenAI(api_key=api_key)
-
-    # Build financial context
-    try:
-        snap = _ma_snapshot()
-        fin_ctx = f"""
-LIVE MASTERCARD (MA) MARKET DATA (as of today):
-• Price: ${snap["price"]:.2f}
-• Market Cap: ${snap["mktcap"]:.0f}B
-• Trailing P/E: {snap["pe"]:.1f}x  |  Forward P/E: {snap["forward_pe"]:.1f}x
-• Revenue (TTM): ${snap["revenue"]:.1f}B
-• Net Margin: {snap["margin"]:.1f}%
-• ROE: {snap["roe"]:.1f}%
-• Free Cash Flow: ${snap["fcf"]:.1f}B
-• Beta: {snap["beta"]:.2f}
-• 1-Year Return: {snap["ytd"]:+.1f}%
-"""
-    except Exception:
-        fin_ctx = "Live financial data temporarily unavailable."
-
-    # RAG context from case documents
-    doc_ctx = ""
-    citations = []
-    try:
-        from src.retrieval import retrieve
-
-        last_user = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
-        chunks = retrieve(last_user, top_k=5)
-        if chunks:
-            doc_ctx = "\n".join(f"[{c['citation']}]\n{c['text']}" for c in chunks)
-            citations = list({c["citation"] for c in chunks})
-    except Exception:
-        pass
-
-    system = f"""You are an expert financial analyst and AI research assistant for Mastercard (NYSE: MA).
-You are helping MBA students at MGMT690 analyze two landmark case events:
-• Mastercard Agent Suite (Jan 2026) — AI-native agentic commerce infrastructure
-• Cloudflare × Mastercard partnership (Feb 2026) — Comprehensive cyber-defense for agentic payments
-
-You have access to:
-1. LIVE FINANCIAL DATA: {fin_ctx}
-2. CASE DOCUMENTS (excerpts below from Agent Suite PR, Cloudflare PR, Mastercard 10-K 2024)
-
-CASE DOCUMENT EXCERPTS:
-{doc_ctx if doc_ctx else "No relevant excerpts retrieved for this question."}
-
-Instructions:
-- Answer analytically and thoroughly. Use specific numbers from the financial data above.
-- When drawing on case documents, cite them (e.g., "Per the Agent Suite press release...").
-- You MAY use your own financial knowledge beyond the documents — this is for an MBA analysis.
-- Be direct and insightful. Avoid vague answers.
-- If asked about valuation, give a clear perspective with supporting data.
-- Format with bullet points or short paragraphs where helpful.
-"""
-
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[{"role": "system", "content": system}] + messages,
-        temperature=0.3,
-        max_tokens=1200,
-    )
-    answer = response.choices[0].message.content.strip()
-
-    if citations:
-        answer += "\n\n*Sources: " + " · ".join(citations) + "*"
-
-    return answer
-
-
-# ── Page layout ───────────────────────────────────────────────────────────────
 st.title("🔍 CardLens — Mastercard Research Terminal")
-st.caption("MGMT690 Project 2 · AI-powered equity research · Agent Suite + Cloudflare case")
+st.caption(
+    "MGMT690 Project 2 · Powered by GPT-4o-mini + live market data + case documents (Agent Suite · Cloudflare · 10-K)"
+)
 
-# Live metrics bar
 try:
-    snap = _ma_snapshot()
+    snap = _snap()
     m1, m2, m3, m4, m5, m6 = st.columns(6)
     m1.metric("MA Price", f"${snap['price']:.2f}", f"{snap['ytd']:+.1f}% 1Y")
-    m2.metric("Market Cap", f"${snap['mktcap']:.0f}B")
-    m3.metric("P/E (Trailing)", f"{snap['pe']:.1f}x")
+    m2.metric("Mkt Cap", f"${snap['mktcap']:.0f}B")
+    m3.metric("P/E (Trail.)", f"{snap['pe']:.1f}x")
     m4.metric("Net Margin", f"{snap['margin']:.1f}%")
     m5.metric("ROE", f"{snap['roe']:.1f}%")
     m6.metric("FCF", f"${snap['fcf']:.1f}B")
 except Exception:
-    st.warning("Live market data unavailable — check your connection.", icon="⚠️")
+    st.info("Live market data loading…")
 
 st.divider()
 
-# ── Chat interface ─────────────────────────────────────────────────────────────
-st.subheader("💬 AI Research Assistant")
+# ── Live Chat ─────────────────────────────────────────────────────────────────
+st.subheader("💬 Live AI Research Chat")
 st.caption(
-    "Ask anything — financials, valuation, Agent Suite strategy, Cloudflare partnership, risks, trade decision. "
-    "The AI has live market data + case documents."
+    "Ask anything about Mastercard — financials, strategy, valuation, Agent Suite, Cloudflare, risks. "
+    "Responses stream live."
 )
 
 # Quick question chips
 CHIPS = [
-    "What is Mastercard Agent Suite and why does it matter?",
-    "What are the key terms of the Cloudflare partnership?",
-    "Is Mastercard fairly valued right now?",
-    "What are the main risks to the investment thesis?",
-    "Give me a Buy / Hold / Avoid recommendation with reasons.",
-    "How does Agent Suite create a new revenue stream for Mastercard?",
-    "What does the 10-K say about Mastercard's competitive moat?",
-    "What is Mastercard's valuation vs Visa?",
+    "What is Mastercard Agent Suite?",
+    "Explain the Cloudflare partnership",
+    "Is Mastercard fairly valued?",
+    "What are the main investment risks?",
+    "Give me a Buy / Hold / Avoid call",
+    "How does Agent Suite generate revenue?",
+    "MA vs Visa — which is better?",
+    "What does the 10-K say about growth?",
 ]
 
 chip_cols = st.columns(4)
 for i, q in enumerate(CHIPS):
     if chip_cols[i % 4].button(q, key=f"chip_{i}", use_container_width=True):
-        st.session_state["pending"] = q
+        st.session_state["_pending"] = q
 
-# Init chat history
+
+# ── Streaming chat function ────────────────────────────────────────────────────
+def _build_system() -> str:
+    try:
+        s = _snap()
+        fin = (
+            f"LIVE MA DATA: Price ${s['price']:.2f} | Mkt Cap ${s['mktcap']:.0f}B | "
+            f"P/E {s['pe']:.1f}x (fwd {s['fpe']:.1f}x) | Revenue ${s['revenue']:.1f}B | "
+            f"Net Margin {s['margin']:.1f}% | ROE {s['roe']:.1f}% | FCF ${s['fcf']:.1f}B | "
+            f"Beta {s['beta']:.2f} | 1Y return {s['ytd']:+.1f}%"
+        )
+    except Exception:
+        fin = "Live market data unavailable."
+
+    doc_hint = ""
+    try:
+        # We'll inject RAG per-question; just note docs exist
+        doc_hint = "You have access to: Mastercard Agent Suite PR (Jan 2026), Cloudflare partnership PRs (2025/2026), Mastercard 10-K (2024)."
+    except Exception:
+        pass
+
+    return f"""You are an expert financial analyst and live research assistant for Mastercard (NYSE: MA) for an MBA equity research course (MGMT690).
+
+{fin}
+
+Case context: {doc_hint}
+
+Your role:
+- Answer financial, strategic, and valuation questions about Mastercard with depth and precision.
+- Use the live financial data above in every relevant answer.
+- Cite case documents when relevant (Agent Suite PR, Cloudflare PR, 10-K).
+- Be analytical, direct, and insightful — like a top-tier equity research report.
+- For valuation questions: provide DCF logic, peer multiples context, and a clear view.
+- For strategy: tie Agent Suite and Cloudflare to revenue/moat implications.
+- Format responses with bullet points or short paragraphs for clarity.
+"""
+
+
+def _rag_context(question: str) -> str:
+    """Get relevant case document excerpts for the question."""
+    try:
+        from src.retrieval import retrieve
+
+        chunks = retrieve(question, top_k=4)
+        if not chunks:
+            return ""
+        return "\n\nRelevant case document excerpts:\n" + "\n".join(
+            f"[{c['citation']}]: {c['text'][:400]}" for c in chunks
+        )
+    except Exception:
+        return ""
+
+
+def _stream(api_key: str, chat_history: list[dict], question: str):
+    """Yield streaming tokens from OpenAI."""
+    from openai import OpenAI
+
+    rag = _rag_context(question)
+    system = _build_system()
+    if rag:
+        system += rag
+
+    messages = [{"role": "system", "content": system}] + chat_history
+
+    client = OpenAI(api_key=api_key)
+    with client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=messages,
+        stream=True,
+        temperature=0.3,
+        max_tokens=1200,
+    ) as stream:
+        for chunk in stream:
+            delta = chunk.choices[0].delta.content
+            if delta:
+                yield delta
+
+
+# ── Chat history display ───────────────────────────────────────────────────────
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Display chat history
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-# Handle input
+# ── Handle input ──────────────────────────────────────────────────────────────
 prompt = st.chat_input("Ask about Mastercard, Agent Suite, Cloudflare, valuation, risks…")
-if not prompt and "pending" in st.session_state:
-    prompt = st.session_state.pop("pending")
+if not prompt and "_pending" in st.session_state:
+    prompt = st.session_state.pop("_pending")
 
 if prompt:
+    api_key = st.session_state.get("_oai_key") or os.environ.get("OPENAI_API_KEY", "")
+
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        with st.spinner("Analyzing…"):
-            answer = _chat(st.session_state.messages)
-        st.markdown(answer)
+        if not api_key or len(api_key) < 10:
+            answer = "⚠️ Please paste your OpenAI API key in the sidebar to enable the live chat."
+            st.markdown(answer)
+        else:
+            try:
+                answer = st.write_stream(_stream(api_key, st.session_state.messages[:-1], prompt))
+            except Exception as e:
+                answer = f"❌ Error: {e}"
+                st.error(answer)
 
     st.session_state.messages.append({"role": "assistant", "content": answer})
-    st.rerun()
 
+# ── Controls ──────────────────────────────────────────────────────────────────
 if st.session_state.messages:
-    if st.button("🗑 Clear chat", key="clear_chat"):
+    if st.button("🗑 Clear conversation"):
         st.session_state.messages = []
         st.rerun()
 
 st.divider()
 st.caption(
-    "📄 Detailed analysis: use the sidebar → **Fundamentals · Technicals · Valuation · News · Decision**  |  "
+    "Live data from Yahoo Finance · Case docs: Agent Suite PR, Cloudflare PR, MA 10-K · "
     "Educational only — not investment advice."
 )
